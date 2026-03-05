@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Immigration Card OCR</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 16px; }
+    video, canvas { max-width: 100%; width: 360px; border: 1px solid #ccc; }
+    button { margin: 6px 4px; padding: 8px 12px; }
+    #status { color: #0066cc; margin-top: 8px; min-height: 1.2em; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <h2>Immigration Card OCR</h2>
+  <video id="video" autoplay playsinline></video><br/>
+  <button id="startCam">Start Camera</button>
+  <button id="scanBtn" disabled>Scan card</button>
+  <button id="saveBtn" disabled>Save to Sheet</button>
+  <div id="status"></div>
+
+  <h3>Extracted text</h3>
+  <textarea id="textOut" rows="8" cols="50" placeholder="Result appears here"></textarea>
+  <canvas id="capture" width="640" height="480" style="display:none;"></canvas>
+
+  <script>
+    const video=document.getElementById('video');
+    const canvas=document.getElementById('capture');
+    const textOut=document.getElementById('textOut');
+    const statusEl=document.getElementById('status');
+    const startBtn=document.getElementById('startCam');
+    const scanBtn=document.getElementById('scanBtn');
+    const saveBtn=document.getElementById('saveBtn');
+    let stream;
+
+    startBtn.onclick = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+        video.srcObject = stream;
+        scanBtn.disabled = false;
+        statusEl.textContent = 'Camera ready. Place card in view and press "Scan card".';
+      } catch (e) {
+        statusEl.textContent = 'Camera error: ' + e.name + ' - ' + e.message;
+      }
+    };
+
+    scanBtn.onclick = async () => {
+      if (!stream) return;
+      statusEl.textContent = 'Capturing…';
+      const ctx = canvas.getContext('2d');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      statusEl.textContent = 'Running OCR…';
+      scanBtn.disabled = true;
+      const { data: { text } } = await Tesseract.recognize(
+        canvas.toDataURL('image/png'), 'eng', { tessedit_pageseg_mode: 6 }
+      );
+      textOut.value = text.trim();
+      statusEl.textContent = 'Done. Review text, then Save to Sheet.';
+      scanBtn.disabled = false;
+      saveBtn.disabled = !textOut.value;
+    };
+
+    saveBtn.onclick = async () => {
+      const txt = textOut.value.trim();
+      if (!txt) { statusEl.textContent = 'Nothing to save.'; return; }
+      statusEl.textContent = 'Saving…';
+      const res = await fetch('https://script.google.com/macros/s/AKfycbyO398Knz7S0xivrzMAtX-s4bFInPWg8i8otsrgSHcm97PVTEcON4daehSFvb-ZpGNl/exec', {
+        method:'POST',
+        mode:'cors',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({ text: txt })
+      });
+      statusEl.textContent = res.ok ? 'Saved!' : 'Save failed';
+    };
+  </script>
+</body>
+</html>
